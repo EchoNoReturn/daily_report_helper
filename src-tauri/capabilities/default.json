@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "fs:scope-appcache-recursive",
+    "fs:allow-write-file",
+    "fs:allow-read-file"
+  ]
+}

@@ -56,21 +56,6 @@ pub async fn init_database(app: &AppHandle, db_state: DbState) -> Result<(), Str
 }
 
 async fn init_tables(pool: &Pool<Sqlite>) -> Result<(), String> {
-    // configs 表
-    sqlx::query(
-        r#"
-        CREATE TABLE IF NOT EXISTS configs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            key TEXT NOT NULL UNIQUE,
-            value TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-        "#
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| format!("创建 configs 表失败: {}", e))?;
-
     // ideas 表
     sqlx::query(
         r#"
@@ -78,7 +63,7 @@ async fn init_tables(pool: &Pool<Sqlite>) -> Result<(), String> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             content TEXT NOT NULL,
             attachments TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at INTEGER NOT NULL,
             date TEXT NOT NULL
         );
         "#
@@ -99,10 +84,10 @@ async fn init_tables(pool: &Pool<Sqlite>) -> Result<(), String> {
         CREATE TABLE IF NOT EXISTS done_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             content TEXT NOT NULL,
-            start_time DATETIME NOT NULL,
-            end_time DATETIME NOT NULL,
+            start_time INTEGER NOT NULL,
+            end_time INTEGER NOT NULL,
             attachments TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at INTEGER NOT NULL,
             date TEXT NOT NULL
         );
         "#
@@ -113,6 +98,28 @@ async fn init_tables(pool: &Pool<Sqlite>) -> Result<(), String> {
 
     // 创建索引
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_tasks_date ON done_tasks(date)")
+        .execute(pool)
+        .await
+        .map_err(|e| format!("创建索引失败: {}", e))?;
+
+    // prompts 表
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        "#
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| format!("创建 prompts 表失败: {}", e))?;
+
+    // 创建索引
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_prompts_name ON prompts(name)")
         .execute(pool)
         .await
         .map_err(|e| format!("创建索引失败: {}", e))?;

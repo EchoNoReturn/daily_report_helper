@@ -50,10 +50,14 @@ export function TasksView() {
         throw new Error('时间格式无效');
       }
 
+      // 转换为 Unix 时间戳（秒）
+      const startTimestamp = Math.floor(start.getTime() / 1000);
+      const endTimestamp = Math.floor(end.getTime() / 1000);
+
       await addTask(
         content,
-        start.toISOString(),
-        end.toISOString(),
+        startTimestamp,
+        endTimestamp,
         attachments
       );
 

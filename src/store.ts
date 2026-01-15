@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
-import { AIMessage, ApiConfig, CurrentView, TodayRecords } from './types'
+import { AIMessage, ApiConfig, CurrentView, TodayRecords, Prompt } from './types'
 
 interface AppState {
   // 当前视图
@@ -9,6 +9,7 @@ interface AppState {
   // 数据
   records: TodayRecords;
   apiConfig: ApiConfig | null;
+  prompts: Prompt[];
   messages: AIMessage[];
   loading: boolean;
 
@@ -17,8 +18,14 @@ interface AppState {
   loadTodayRecords: () => Promise<void>;
   loadApiConfig: () => Promise<void>;
   saveApiConfig: (config: ApiConfig) => Promise<void>;
+  loadPrompts: () => Promise<void>;
+  addPrompt: (name: string, content: string) => Promise<void>;
+  updatePrompt: (id: number, name: string, content: string) => Promise<void>;
+  deletePrompt: (id: number) => Promise<void>;
   addIdea: (content: string, attachments: string[]) => Promise<void>;
-  addTask: (content: string, startTime: string, endTime: string, attachments: string[]) => Promise<void>;
+  addTask: (content: string, startTime: number, endTime: number, attachments: string[]) => Promise<void>;
+  deleteIdea: (id: number) => Promise<void>;
+  deleteTask: (id: number) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
   generateReport: () => Promise<void>;
   clearMessages: () => void;
@@ -30,6 +37,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentView: 'ideas',
   records: { ideas: [], tasks: [] },
   apiConfig: null,
+  prompts: [],
   messages: [],
   loading: false,
 
@@ -63,8 +71,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveApiConfig: async (config: ApiConfig) => {
     try {
       await invoke('save_api_config', {
-        apiKey: config.apiKey,
-        apiUrl: config.apiUrl,
+        api_key: config.apiKey,
+        api_url: config.apiUrl,
         model: config.model
       })
       set({ apiConfig: config })
@@ -74,11 +82,63 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  // 加载提示词
+  loadPrompts: async () => {
+    try {
+      const prompts = await invoke('get_prompts')
+      set({ prompts: prompts as Prompt[] })
+    } catch (error) {
+      console.error('加载提示词失败:', error)
+    }
+  },
+
+  // 添加提示词
+  addPrompt: async (name: string, content: string) => {
+    try {
+      await invoke('add_prompt', { name, content })
+      // 重新加载提示词
+      await get().loadPrompts()
+    } catch (error) {
+      console.error('添加提示词失败:', error)
+      throw error
+    }
+  },
+
+  // 更新提示词
+  updatePrompt: async (id: number, name: string, content: string) => {
+    try {
+      await invoke('update_prompt', { id, name, content })
+      // 重新加载提示词
+      await get().loadPrompts()
+    } catch (error) {
+      console.error('更新提示词失败:', error)
+      throw error
+    }
+  },
+
+  // 删除提示词
+  deletePrompt: async (id: number) => {
+    try {
+      await invoke('delete_prompt', { id })
+      // 从本地状态中移除，避免重新加载
+      set(state => ({
+        prompts: state.prompts.filter(prompt => prompt.id !== id)
+      }))
+    } catch (error) {
+      console.error('删除提示词失败:', error)
+      throw error
+    }
+  },
+
   // 添加想法
   addIdea: async (content: string, attachments: string[]) => {
     try {
-      const timestamp = new Date().toISOString();
-      await invoke('add_idea', { content, attachments, timestamp })
+      const created_at = Math.floor(Date.now() / 1000);
+      await invoke('add_idea', {
+        content,
+        attachments,
+        created_at
+      })
       // 重新加载记录
       await get().loadTodayRecords()
     } catch (error) {
@@ -88,10 +148,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // 添加事项
-  addTask: async (content: string, startTime: string, endTime: string, attachments: string[]) => {
+  addTask: async (content: string, startTime: number, endTime: number, attachments: string[]) => {
     try {
-      const timestamp = new Date().toISOString();
-      await invoke('add_done_task', { content, startTime, endTime, attachments, timestamp })
+      const created_at = Math.floor(Date.now() / 1000);
+      await invoke('add_done_task', { content, start_time: startTime, end_time: endTime, attachments, created_at })
       // 重新加载记录
       await get().loadTodayRecords()
     } catch (error) {
@@ -100,89 +160,48 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // 发送消息
-  sendMessage: async (message: string) => {
-    const { messages, apiConfig } = get()
-
-    // 检查配置
-    if (!apiConfig?.apiKey || !apiConfig?.apiUrl) {
-      throw new Error('请先配置 AI 接口')
-    }
-
-    // 添加用户消息
-    const userMessage: AIMessage = {
-      role: 'user',
-      content: message,
-      timestamp: new Date().toISOString()
-    }
-    set({ messages: [...messages, userMessage] })
-
+  // 删除想法
+  deleteIdea: async (id: number) => {
+    console.log('deleteIdea called with id:', id);
     try {
-      // 调用 AI
-      const response = await invoke('send_ai_message', { message })
-
-      // 添加 AI 回复
-      const aiMessage: AIMessage = {
-        role: 'assistant',
-        content: response as string,
-        timestamp: new Date().toISOString()
-      }
-
-      set({ messages: [...get().messages, aiMessage] })
+      await invoke('delete_idea', { id })
+      // 从本地状态中移除，避免重新加载
+      set(state => ({
+        records: {
+          ...state.records,
+          ideas: state.records.ideas.filter(idea => idea.id !== id)
+        }
+      }))
     } catch (error) {
-      console.error('发送消息失败:', error)
-
-      // 添加错误消息
-      const errorMessage: AIMessage = {
-        role: 'assistant',
-        content: `错误: ${error}`,
-        timestamp: new Date().toISOString()
-      }
-      set({ messages: [...get().messages, errorMessage] })
+      console.error('删除想法失败:', error)
       throw error
     }
   },
 
-  // 生成日报
-  generateReport: async () => {
-    const { apiConfig, messages } = get()
-
-    // 检查配置
-    if (!apiConfig?.apiKey || !apiConfig?.apiUrl) {
-      throw new Error('请先配置 AI 接口')
-    }
-
-    // 添加用户提示（显示在输入框上方）
-    const userMessage: AIMessage = {
-      role: 'user',
-      content: '📄 正在生成日报...',
-      timestamp: new Date().toISOString()
-    }
-    set({ messages: [...messages, userMessage] })
-
+  // 删除事项
+  deleteTask: async (id: number) => {
     try {
-      // 调用后端生成日报
-      const report = await invoke('generate_daily_report')
-
-      // 添加 AI 回复
-      const aiMessage: AIMessage = {
-        role: 'assistant',
-        content: report as string,
-        timestamp: new Date().toISOString()
-      }
-
-      set({ messages: [...get().messages, aiMessage] })
+      await invoke('delete_task', { id })
+      // 从本地状态中移除，避免重新加载
+      set(state => ({
+        records: {
+          ...state.records,
+          tasks: state.records.tasks.filter(task => task.id !== id)
+        }
+      }))
     } catch (error) {
-      console.error('生成日报失败:', error)
-
-      const errorMessage: AIMessage = {
-        role: 'assistant',
-        content: `生成日报失败: ${error}`,
-        timestamp: new Date().toISOString()
-      }
-      set({ messages: [...get().messages, errorMessage] })
+      console.error('删除事项失败:', error)
       throw error
     }
+  },
+
+  // AI 功能已移除 - 这些方法保留为占位符，前端可以自行实现 AI 调用
+  sendMessage: async (_message: string) => {
+    throw new Error('AI 功能已移至前端实现，请使用前端 API 调用')
+  },
+
+  generateReport: async () => {
+    throw new Error('AI 功能已移至前端实现，请使用前端 API 调用')
   },
 
   // 清空消息

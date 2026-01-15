@@ -1,21 +1,12 @@
 use serde::{Deserialize, Serialize};
 
-/// 配置表 - 存储 API 配置
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Config {
-    pub id: i64,
-    pub key: String,
-    pub value: String,
-    pub created_at: chrono::DateTime<chrono::Local>,
-}
-
 /// 想法表
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Idea {
     pub id: i64,
     pub content: String,
     pub attachments: Vec<String>, // 附件路径数组
-    pub created_at: chrono::DateTime<chrono::Local>,
+    pub created_at: i64, // Unix 时间戳
     pub date: String, // YYYY-MM-DD
 }
 
@@ -24,14 +15,24 @@ pub struct Idea {
 pub struct DoneTask {
     pub id: i64,
     pub content: String,
-    pub start_time: chrono::DateTime<chrono::Local>,
-    pub end_time: chrono::DateTime<chrono::Local>,
+    pub start_time: i64, // Unix 时间戳
+    pub end_time: i64, // Unix 时间戳
     pub attachments: Vec<String>, // 附件路径数组
-    pub created_at: chrono::DateTime<chrono::Local>,
+    pub created_at: i64, // Unix 时间戳
     pub date: String, // YYYY-MM-DD
 }
 
-/// API 配置结构（用于返回给前端）
+/// 提示词表
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Prompt {
+    pub id: i64,
+    pub name: String,
+    pub content: String,
+    pub created_at: i64, // Unix 时间戳
+    pub updated_at: i64, // Unix 时间戳
+}
+
+/// AI 配置结构（JSON 文件存储）
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiConfig {
     pub api_key: String,

@@ -1,8 +1,9 @@
 use tauri::State;
 use sqlx::{Pool, Sqlite, Row, Column};
 
-use crate::models::{ApiConfig, TodayRecords, Idea, DoneTask};
+use crate::models::{TodayRecords, Idea, DoneTask, Prompt, ApiConfig};
 use crate::database::DbState;
+use crate::config::ConfigManager;
 
 // 辅助函数：获取数据库连接池
 async fn get_pool(state: &State<'_, DbState>) -> Result<Pool<Sqlite>, String> {
@@ -68,86 +69,38 @@ async fn execute_write(
     Ok(())
 }
 
-// ========== 配置命令 ==========
+// ========== AI 配置命令 (JSON 文件存储) ==========
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn save_api_config(
-    state: State<'_, DbState>,
+    app: tauri::AppHandle,
     api_key: String,
     api_url: String,
     model: String,
 ) -> Result<(), String> {
-    let pool = get_pool(&state).await?;
-
-    let init_query = r#"
-        CREATE TABLE IF NOT EXISTS configs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            key TEXT NOT NULL UNIQUE,
-            value TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-    "#;
-    execute_write(&pool, init_query, &[]).await?;
-
-    execute_write(
-        &pool,
-        "INSERT OR REPLACE INTO configs (key, value) VALUES (?, ?)",
-        &[&api_key, &api_key],
-    ).await?;
-    execute_write(
-        &pool,
-        "INSERT OR REPLACE INTO configs (key, value) VALUES (?, ?)",
-        &[&api_url, &api_url],
-    ).await?;
-    execute_write(
-        &pool,
-        "INSERT OR REPLACE INTO configs (key, value) VALUES (?, ?)",
-        &[&model, &model],
-    ).await?;
-
-    Ok(())
+    let config_manager = ConfigManager::new(&app)?;
+    let config = ApiConfig { api_key, api_url, model };
+    config_manager.save_config(&config)
 }
 
 #[tauri::command]
 pub async fn get_api_config(
-    state: State<'_, DbState>,
+    app: tauri::AppHandle,
 ) -> Result<Option<ApiConfig>, String> {
-    let pool = get_pool(&state).await?;
-
-    let init_query = r#"
-        CREATE TABLE IF NOT EXISTS configs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            key TEXT NOT NULL UNIQUE,
-            value TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-    "#;
-    execute_write(&pool, init_query, &[]).await?;
-
-    let api_key_result = execute_query(&pool, "SELECT value FROM configs WHERE key = ?", &["api_key"]).await?;
-    let api_url_result = execute_query(&pool, "SELECT value FROM configs WHERE key = ?", &["api_url"]).await?;
-    let model_result = execute_query(&pool, "SELECT value FROM configs WHERE key = ?", &["model"]).await?;
-
-    if let (Some(api_key), Some(api_url), Some(model)) = (
-        api_key_result.first().and_then(|r| r["value"].as_str()).map(String::from),
-        api_url_result.first().and_then(|r| r["value"].as_str()).map(String::from),
-        model_result.first().and_then(|r| r["value"].as_str()).map(String::from),
-    ) {
-        Ok(Some(ApiConfig { api_key, api_url, model }))
-    } else {
-        Ok(None)
-    }
+    let config_manager = ConfigManager::new(&app)?;
+    config_manager.load_config()
 }
 
-// ========== 随手记命令 ==========
+// ========== 随手记命令 (使用时间戳) ==========
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn add_idea(
     state: State<'_, DbState>,
     content: String,
     attachments: Vec<String>,
-    timestamp: String,
+    created_at: i64,
 ) -> Result<i64, String> {
+    println!("add_idea called with content: {}, attachments: {:?}, created_at: {}", content, attachments, created_at);
     let pool = get_pool(&state).await?;
 
     let init_query = r#"
@@ -155,22 +108,16 @@ pub async fn add_idea(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             content TEXT NOT NULL,
             attachments TEXT NOT NULL,
-            created_at DATETIME NOT NULL,
+            created_at INTEGER NOT NULL,
             date TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_ideas_date ON ideas(date);
     "#;
     execute_write(&pool, init_query, &[]).await?;
 
-    let created_at = chrono::DateTime::parse_from_rfc3339(&timestamp)
-        .map_err(|e| format!("时间解析失败: {}", e))?
-        .with_timezone(&chrono::Local)
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string();
-
-    let date = chrono::DateTime::parse_from_rfc3339(&timestamp)
-        .map_err(|e| format!("时间解析失败: {}", e))?
-        .with_timezone(&chrono::Local)
+    // 将时间戳转换为日期字符串
+    let date = chrono::DateTime::from_timestamp(created_at, 0)
+        .ok_or("无效的时间戳")?
         .format("%Y-%m-%d")
         .to_string();
 
@@ -179,7 +126,7 @@ pub async fn add_idea(
     execute_write(
         &pool,
         "INSERT INTO ideas (content, attachments, created_at, date) VALUES (?, ?, ?, ?)",
-        &[&content, &attachments_json, &created_at, &date],
+        &[&content, &attachments_json, &created_at.to_string(), &date],
     ).await?;
 
     let result = execute_query(&pool, "SELECT last_insert_rowid() as id", &[]).await?;
@@ -187,14 +134,14 @@ pub async fn add_idea(
     Ok(id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn add_done_task(
     state: State<'_, DbState>,
     content: String,
-    start_time: String,
-    end_time: String,
+    start_time: i64,
+    end_time: i64,
     attachments: Vec<String>,
-    timestamp: String,
+    created_at: i64,
 ) -> Result<i64, String> {
     let pool = get_pool(&state).await?;
 
@@ -202,38 +149,20 @@ pub async fn add_done_task(
         CREATE TABLE IF NOT EXISTS done_tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             content TEXT NOT NULL,
-            start_time DATETIME NOT NULL,
-            end_time DATETIME NOT NULL,
+            start_time INTEGER NOT NULL,
+            end_time INTEGER NOT NULL,
             attachments TEXT NOT NULL,
-            created_at DATETIME NOT NULL,
+            created_at INTEGER NOT NULL,
             date TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_tasks_date ON done_tasks(date);
     "#;
     execute_write(&pool, init_query, &[]).await?;
 
-    let start = chrono::DateTime::parse_from_rfc3339(&start_time)
-        .map_err(|e| format!("时间解析失败: {}", e))?
-        .with_timezone(&chrono::Local)
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string();
-
-    let end = chrono::DateTime::parse_from_rfc3339(&end_time)
-        .map_err(|e| format!("时间解析失败: {}", e))?
-        .with_timezone(&chrono::Local)
-        .format("%Y-%m-%d %H:%M:%S")
-        .to_string();
-
-    let date = chrono::DateTime::parse_from_rfc3339(&start_time)
-        .unwrap()
-        .with_timezone(&chrono::Local)
+    // 将开始时间戳转换为日期字符串
+    let date = chrono::DateTime::from_timestamp(start_time, 0)
+        .ok_or("无效的时间戳")?
         .format("%Y-%m-%d")
-        .to_string();
-
-    let created_at = chrono::DateTime::parse_from_rfc3339(&timestamp)
-        .map_err(|e| format!("时间解析失败: {}", e))?
-        .with_timezone(&chrono::Local)
-        .format("%Y-%m-%d %H:%M:%S")
         .to_string();
 
     let attachments_json = serde_json::to_string(&attachments).unwrap_or_else(|_| "[]".to_string());
@@ -241,7 +170,7 @@ pub async fn add_done_task(
     execute_write(
         &pool,
         "INSERT INTO done_tasks (content, start_time, end_time, attachments, created_at, date) VALUES (?, ?, ?, ?, ?, ?)",
-        &[&content, &start, &end, &attachments_json, &created_at, &date],
+        &[&content, &start_time.to_string(), &end_time.to_string(), &attachments_json, &created_at.to_string(), &date],
     ).await?;
 
     let result = execute_query(&pool, "SELECT last_insert_rowid() as id", &[]).await?;
@@ -272,12 +201,7 @@ pub async fn get_today_records(
             id: row["id"].as_i64().unwrap_or(0),
             content: row["content"].as_str().unwrap_or("").to_string(),
             attachments,
-            created_at: chrono::DateTime::parse_from_str(
-                row["created_at"].as_str().unwrap_or(""),
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .unwrap_or_else(|_| chrono::Local::now().fixed_offset())
-            .with_timezone(&chrono::Local),
+            created_at: row["created_at"].as_i64().unwrap_or(0),
             date: row["date"].as_str().unwrap_or("").to_string(),
         });
     }
@@ -297,25 +221,10 @@ pub async fn get_today_records(
         tasks.push(DoneTask {
             id: row["id"].as_i64().unwrap_or(0),
             content: row["content"].as_str().unwrap_or("").to_string(),
-            start_time: chrono::DateTime::parse_from_str(
-                row["start_time"].as_str().unwrap_or(""),
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .unwrap_or_else(|_| chrono::Local::now().fixed_offset())
-            .with_timezone(&chrono::Local),
-            end_time: chrono::DateTime::parse_from_str(
-                row["end_time"].as_str().unwrap_or(""),
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .unwrap_or_else(|_| chrono::Local::now().fixed_offset())
-            .with_timezone(&chrono::Local),
+            start_time: row["start_time"].as_i64().unwrap_or(0),
+            end_time: row["end_time"].as_i64().unwrap_or(0),
             attachments,
-            created_at: chrono::DateTime::parse_from_str(
-                row["created_at"].as_str().unwrap_or(""),
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .unwrap_or_else(|_| chrono::Local::now().fixed_offset())
-            .with_timezone(&chrono::Local),
+            created_at: row["created_at"].as_i64().unwrap_or(0),
             date: row["date"].as_str().unwrap_or("").to_string(),
         });
     }
@@ -323,83 +232,196 @@ pub async fn get_today_records(
     Ok(TodayRecords { ideas, tasks })
 }
 
-// ========== AI 相关命令 ==========
+// ========== 删除命令 ==========
 
 #[tauri::command]
-pub async fn generate_daily_report(
+pub async fn delete_idea(
     state: State<'_, DbState>,
-) -> Result<String, String> {
-    let records = get_today_records(state.clone()).await?;
+    id: i64,
+) -> Result<(), String> {
+    let pool = get_pool(&state).await?;
 
-    let mut prompt = String::from("请根据以下内容生成一份日报:\n\n");
+    // 确保表存在
+    let init_query = r#"
+        CREATE TABLE IF NOT EXISTS ideas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL,
+            attachments TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            date TEXT NOT NULL
+        );
+    "#;
+    execute_write(&pool, init_query, &[]).await?;
 
-    if !records.ideas.is_empty() {
-        prompt += "【今日想法】\n";
-        for idea in records.ideas {
-            prompt += &format!("- {}\n", idea.content);
-        }
-        prompt += "\n";
-    }
+    // 执行删除
+    execute_write(
+        &pool,
+        "DELETE FROM ideas WHERE id = ?",
+        &[&id.to_string()],
+    ).await?;
 
-    if !records.tasks.is_empty() {
-        prompt += "【已完成事项】\n";
-        for task in records.tasks {
-            let start = task.start_time.format("%H:%M").to_string();
-            let end = task.end_time.format("%H:%M").to_string();
-            prompt += &format!("- [{}] {}\n", format!("{}-{}", start, end), task.content);
-        }
-    }
-
-    prompt += "\n请以专业、简洁的格式生成日报。";
-
-    send_ai_message(state, prompt).await
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn send_ai_message(
+pub async fn delete_task(
     state: State<'_, DbState>,
-    message: String,
-) -> Result<String, String> {
+    id: i64,
+) -> Result<(), String> {
     let pool = get_pool(&state).await?;
 
-    let api_key_result = execute_query(&pool, "SELECT value FROM configs WHERE key = ?", &["api_key"]).await?;
-    let api_url_result = execute_query(&pool, "SELECT value FROM configs WHERE key = ?", &["api_url"]).await?;
-    let model_result = execute_query(&pool, "SELECT value FROM configs WHERE key = ?", &["model"]).await?;
+    // 确保表存在
+    let init_query = r#"
+        CREATE TABLE IF NOT EXISTS done_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            content TEXT NOT NULL,
+            start_time INTEGER NOT NULL,
+            end_time INTEGER NOT NULL,
+            attachments TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            date TEXT NOT NULL
+        );
+    "#;
+    execute_write(&pool, init_query, &[]).await?;
 
-    let api_key = api_key_result.first().and_then(|r| r["value"].as_str()).ok_or("未配置 API Key")?;
-    let api_url = api_url_result.first().and_then(|r| r["value"].as_str()).ok_or("未配置 API URL")?;
-    let model = model_result.first().and_then(|r| r["value"].as_str()).unwrap_or("gpt-4");
+    // 执行删除
+    execute_write(
+        &pool,
+        "DELETE FROM done_tasks WHERE id = ?",
+        &[&id.to_string()],
+    ).await?;
 
-    let client = reqwest::Client::new();
-    let response = client
-        .post(format!("{}/chat/completions", api_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .json(&serde_json::json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "你是一个专业的日报助手，擅长用简洁、专业的语言总结工作内容。"
-                },
-                {
-                    "role": "user",
-                    "content": message
-                }
-            ],
-            "stream": false
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("AI 请求失败: {}", e))?;
+    Ok(())
+}
 
-    let data: serde_json::Value = response.json()
-        .await
-        .map_err(|e| format!("解析响应失败: {}", e))?;
+// ========== 提示词管理命令 ==========
 
-    let content = data["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("未获取到回复")
-        .to_string();
+#[tauri::command]
+pub async fn add_prompt(
+    state: State<'_, DbState>,
+    name: String,
+    content: String,
+) -> Result<i64, String> {
+    let pool = get_pool(&state).await?;
 
-    Ok(content)
+    let init_query = r#"
+        CREATE TABLE IF NOT EXISTS prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_prompts_name ON prompts(name);
+    "#;
+    execute_write(&pool, init_query, &[]).await?;
+
+    let now = chrono::Local::now().timestamp();
+
+    execute_write(
+        &pool,
+        "INSERT INTO prompts (name, content, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        &[&name, &content, &now.to_string(), &now.to_string()],
+    ).await?;
+
+    let result = execute_query(&pool, "SELECT last_insert_rowid() as id", &[]).await?;
+    let id = result.first().and_then(|r| r["id"].as_i64()).unwrap_or(0);
+    Ok(id)
+}
+
+#[tauri::command]
+pub async fn get_prompts(
+    state: State<'_, DbState>,
+) -> Result<Vec<Prompt>, String> {
+    let pool = get_pool(&state).await?;
+
+    let init_query = r#"
+        CREATE TABLE IF NOT EXISTS prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+    "#;
+    execute_write(&pool, init_query, &[]).await?;
+
+    let prompts_result = execute_query(
+        &pool,
+        "SELECT * FROM prompts ORDER BY updated_at DESC",
+        &[],
+    ).await?;
+
+    let mut prompts = Vec::new();
+    for row in prompts_result {
+        prompts.push(Prompt {
+            id: row["id"].as_i64().unwrap_or(0),
+            name: row["name"].as_str().unwrap_or("").to_string(),
+            content: row["content"].as_str().unwrap_or("").to_string(),
+            created_at: row["created_at"].as_i64().unwrap_or(0),
+            updated_at: row["updated_at"].as_i64().unwrap_or(0),
+        });
+    }
+
+    Ok(prompts)
+}
+
+#[tauri::command]
+pub async fn update_prompt(
+    state: State<'_, DbState>,
+    id: i64,
+    name: String,
+    content: String,
+) -> Result<(), String> {
+    let pool = get_pool(&state).await?;
+
+    let init_query = r#"
+        CREATE TABLE IF NOT EXISTS prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+    "#;
+    execute_write(&pool, init_query, &[]).await?;
+
+    let now = chrono::Local::now().timestamp();
+
+    execute_write(
+        &pool,
+        "UPDATE prompts SET name = ?, content = ?, updated_at = ? WHERE id = ?",
+        &[&name, &content, &now.to_string(), &id.to_string()],
+    ).await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_prompt(
+    state: State<'_, DbState>,
+    id: i64,
+) -> Result<(), String> {
+    let pool = get_pool(&state).await?;
+
+    // 确保表存在
+    let init_query = r#"
+        CREATE TABLE IF NOT EXISTS prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+    "#;
+    execute_write(&pool, init_query, &[]).await?;
+
+    // 执行删除
+    execute_write(
+        &pool,
+        "DELETE FROM prompts WHERE id = ?",
+        &[&id.to_string()],
+    ).await?;
+
+    Ok(())
 }

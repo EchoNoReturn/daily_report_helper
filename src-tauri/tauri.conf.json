@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "日报助手",
   "version": "0.1.0",
-  "identifier": "com.yoyojcoder.daily_report_helper",
+  "identifier": "com.yoyojcoder.daily-report-helper",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",

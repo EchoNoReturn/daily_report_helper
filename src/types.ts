@@ -8,18 +8,26 @@ export interface Idea {
   id: number;
   content: string;
   attachments: string[];
-  createdAt: string;
+  created_at: number; // Unix 时间戳
   date: string;
 }
 
 export interface DoneTask {
   id: number;
   content: string;
-  startTime: string;
-  endTime: string;
+  start_time: number; // Unix 时间戳
+  end_time: number; // Unix 时间戳
   attachments: string[];
-  createdAt: string;
+  created_at: number; // Unix 时间戳
   date: string;
+}
+
+export interface Prompt {
+  id: number;
+  name: string;
+  content: string;
+  created_at: number; // Unix 时间戳
+  updated_at: number; // Unix 时间戳
 }
 
 export interface TodayRecords {
@@ -33,4 +41,4 @@ export interface AIMessage {
   timestamp: string;
 }
 
-export type CurrentView = 'ideas' | 'tasks' | 'settings';
+export type CurrentView = 'ideas' | 'tasks' | 'settings' | 'prompts';

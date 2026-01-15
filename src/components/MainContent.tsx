@@ -2,6 +2,7 @@ import { useAppStore } from '../store';
 import { IdeasView } from './IdeasView';
 import { TasksView } from './TasksView';
 import { SettingsView } from './SettingsView';
+import { PromptsView } from './PromptsView';
 
 export function MainContent() {
   const { currentView } = useAppStore();
@@ -12,6 +13,7 @@ export function MainContent() {
         {currentView === 'ideas' && <IdeasView />}
         {currentView === 'tasks' && <TasksView />}
         {currentView === 'settings' && <SettingsView />}
+        {currentView === 'prompts' && <PromptsView />}
       </div>
     </div>
   );

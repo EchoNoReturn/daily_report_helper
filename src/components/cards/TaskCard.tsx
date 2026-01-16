@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { DoneTask } from '../../types';
 import { useAppStore } from '../../store';
+import { ConfirmDeleteDialog } from '../ui/AlertDialog';
 import { Trash2 } from 'lucide-react';
 
 interface TaskCardProps {
@@ -77,14 +79,20 @@ function formatTaskTime(startTime: number, endTime: number, createdAt: number): 
 }
 
 export function TaskCard({ task }: TaskCardProps) {
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const deleteTask = useAppStore(state => state.deleteTask);
   const { timeRange, date, duration } = formatTaskTime(task.start_time, task.end_time, task.created_at);
 
   const handleDelete = async () => {
+    setIsDeleting(true);
     try {
       await deleteTask(task.id);
+      setIsDeleteDialogOpen(false);
     } catch (error) {
       alert('删除失败: ' + error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -93,7 +101,7 @@ export function TaskCard({ task }: TaskCardProps) {
       <div className="flex justify-between items-start mb-2 gap-2">
         <p className="text-gray-800 font-medium flex-1">{task.content}</p>
         <button
-          onClick={handleDelete}
+          onClick={() => setIsDeleteDialogOpen(true)}
           className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
           title="删除"
         >
@@ -134,6 +142,16 @@ export function TaskCard({ task }: TaskCardProps) {
         </div>
         <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded">事项</span>
       </div>
+
+      <ConfirmDeleteDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        onConfirm={handleDelete}
+        title="删除事项"
+        description={`确定要删除事项"${task.content}"吗？此操作无法撤销。`}
+        itemName={task.content}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }

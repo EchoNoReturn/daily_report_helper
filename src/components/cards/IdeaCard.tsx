@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Idea } from '../../types';
 import { useAppStore } from '../../store';
+import { ConfirmDeleteDialog } from '../ui/AlertDialog';
 import { Trash2 } from 'lucide-react';
 
 interface IdeaCardProps {
@@ -55,15 +57,20 @@ function formatIdeaTime(createdAt: number): { time: string; date?: string; relat
 }
 
 export function IdeaCard({ idea }: IdeaCardProps) {
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const deleteIdea = useAppStore(state => state.deleteIdea);
-  console.log('IdeaCard render:', idea, idea.id, idea.created_at);
   const { time, date, relative } = formatIdeaTime(idea.created_at);
 
   const handleDelete = async () => {
+    setIsDeleting(true);
     try {
       await deleteIdea(idea.id);
+      setIsDeleteDialogOpen(false);
     } catch (error) {
       alert('删除失败: ' + error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -72,7 +79,7 @@ export function IdeaCard({ idea }: IdeaCardProps) {
       <div className="flex justify-between items-start gap-2">
         <p className="text-gray-800 mb-2 flex-1">{idea.content}</p>
         <button
-          onClick={handleDelete}
+          onClick={() => setIsDeleteDialogOpen(true)}
           className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
           title="删除"
         >
@@ -104,6 +111,16 @@ export function IdeaCard({ idea }: IdeaCardProps) {
         </div>
         <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded">想法</span>
       </div>
+
+      <ConfirmDeleteDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+        onConfirm={handleDelete}
+        title="删除想法"
+        description={`确定要删除想法"${idea.content}"吗？此操作无法撤销。`}
+        itemName={idea.content}
+        isDeleting={isDeleting}
+      />
     </div>
   );
 }

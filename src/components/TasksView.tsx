@@ -2,16 +2,14 @@ import { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { TaskCard } from './cards/TaskCard';
 import { AttachmentButton } from './AttachmentButton';
+import { TimeRangePicker } from './ui/TimeRangePicker';
 import { Plus, Loader2 } from 'lucide-react';
 
 export function TasksView() {
   const { records, addTask, loadTodayRecords, loading } = useAppStore();
   const [content, setContent] = useState('');
-  const [startTime, setStartTime] = useState('08:00');
-  const [endTime, setEndTime] = useState(() => {
-    const now = new Date();
-    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  });
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [attachments, setAttachments] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -90,27 +88,15 @@ export function TasksView() {
           disabled={isCreating}
         />
 
-        <div className="flex gap-3 items-center flex-wrap mb-3">
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-gray-700 font-medium">开始:</span>
-            <input
-              type="time"
-              value={startTime}
-              onChange={e => setStartTime(e.target.value)}
-              className="input-field !w-auto"
-            />
-          </label>
-
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-gray-700 font-medium">结束:</span>
-            <input
-              type="time"
-              value={endTime}
-              onChange={e => setEndTime(e.target.value)}
-              className="input-field !w-auto"
-            />
-          </label>
-        </div>
+        <TimeRangePicker
+          startTime={startTime}
+          endTime={endTime}
+          onStartTimeChange={setStartTime}
+          onEndTimeChange={setEndTime}
+          quickOptions={[15, 30, 45, 60, 90, 120]}
+          showDuration={true}
+          className="mb-3"
+        />
 
         <div className="flex gap-2 items-center flex-wrap">
           <AttachmentButton onAdd={handleAddAttachments} />

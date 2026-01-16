@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { Prompt } from '../types';
+import { ConfirmDeleteDialog } from './ui/AlertDialog';
 import { Plus, Edit2, Trash2, Save, X, Loader2 } from 'lucide-react';
 
 export function PromptsView() {
@@ -8,6 +9,12 @@ export function PromptsView() {
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ name: '', content: '' });
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    promptId: number | null;
+    promptName: string;
+    isDeleting: boolean;
+  }>({ open: false, promptId: null, promptName: '', isDeleting: false });
 
   useEffect(() => {
     loadPrompts();
@@ -43,14 +50,21 @@ export function PromptsView() {
     }
   };
 
-  const handleDelete = async (id: number, name: string) => {
-    if (confirm(`确定要删除提示词"${name}"吗？`)) {
-      try {
-        await deletePrompt(id);
-      } catch (error) {
-        alert('删除失败: ' + error);
-      }
+  const handleDelete = async () => {
+    if (!deleteDialog.promptId) return;
+    
+    setDeleteDialog(prev => ({ ...prev, isDeleting: true }));
+    try {
+      await deletePrompt(deleteDialog.promptId);
+      setDeleteDialog({ open: false, promptId: null, promptName: '', isDeleting: false });
+    } catch (error) {
+      alert('删除失败: ' + error);
+      setDeleteDialog(prev => ({ ...prev, isDeleting: false }));
     }
+  };
+
+  const openDeleteDialog = (id: number, name: string) => {
+    setDeleteDialog({ open: true, promptId: id, promptName: name, isDeleting: false });
   };
 
   const startEdit = (prompt: Prompt) => {
@@ -159,7 +173,7 @@ export function PromptsView() {
                         <Edit2 size={16} />
                       </button>
                       <button
-                        onClick={() => handleDelete(prompt.id, prompt.name)}
+                        onClick={() => openDeleteDialog(prompt.id, prompt.name)}
                         className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50"
                         title="删除"
                       >
@@ -173,11 +187,11 @@ export function PromptsView() {
                   </div>
 
                   <div className="text-xs text-gray-500 mt-2">
-                    创建时间: {new Date(prompt.createdAt * 1000).toLocaleString('zh-CN')}
-                    {prompt.updatedAt !== prompt.createdAt && (
+                    创建时间: {new Date(prompt.created_at * 1000).toLocaleString('zh-CN')}
+                    {prompt.updated_at !== prompt.created_at && (
                       <>
                         {' · '}
-                        更新时间: {new Date(prompt.updatedAt * 1000).toLocaleString('zh-CN')}
+                        更新时间: {new Date(prompt.updated_at * 1000).toLocaleString('zh-CN')}
                       </>
                     )}
                   </div>
@@ -187,6 +201,16 @@ export function PromptsView() {
           ))
         )}
       </div>
+
+      <ConfirmDeleteDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        onConfirm={handleDelete}
+        title="删除提示词"
+        description={`确定要删除提示词"${deleteDialog.promptName}"吗？此操作无法撤销。`}
+        itemName={deleteDialog.promptName}
+        isDeleting={deleteDialog.isDeleting}
+      />
     </div>
   );
 }

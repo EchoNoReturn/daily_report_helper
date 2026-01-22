@@ -19,6 +19,7 @@ pub fn run() {
             commands::add_idea,
             commands::add_done_task,
             commands::get_today_records,
+            commands::get_records_by_date_range,
             // 删除命令
             commands::delete_idea,
             commands::delete_task,

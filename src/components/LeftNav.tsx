@@ -1,4 +1,4 @@
-import { Lightbulb, CheckSquare, Settings, FileText } from 'lucide-react';
+import { Lightbulb, CheckSquare, Settings, FileText, History } from 'lucide-react';
 import { useAppStore } from '../store';
 import { CurrentView } from '../types';
 
@@ -33,6 +33,7 @@ export function LeftNav() {
   const views: { view: CurrentView; icon: React.ElementType; label: string }[] = [
     { view: 'ideas', icon: Lightbulb, label: '想法' },
     { view: 'tasks', icon: CheckSquare, label: '事项' },
+    { view: 'history', icon: History, label: '历史' },
     { view: 'prompts', icon: FileText, label: '提示词' },
     { view: 'settings', icon: Settings, label: '设置' },
   ];

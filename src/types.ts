@@ -41,4 +41,4 @@ export interface AIMessage {
   timestamp: string;
 }
 
-export type CurrentView = 'ideas' | 'tasks' | 'settings' | 'prompts';
+export type CurrentView = 'ideas' | 'tasks' | 'settings' | 'prompts' | 'history';

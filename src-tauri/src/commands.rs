@@ -232,6 +232,61 @@ pub async fn get_today_records(
     Ok(TodayRecords { ideas, tasks })
 }
 
+#[tauri::command]
+pub async fn get_records_by_date_range(
+    state: State<'_, DbState>,
+    start_date: String,
+    end_date: String,
+) -> Result<TodayRecords, String> {
+    let pool = get_pool(&state).await?;
+
+    let ideas_result = execute_query(
+        &pool,
+        "SELECT * FROM ideas WHERE date >= ? AND date <= ? ORDER BY date DESC, created_at DESC",
+        &[&start_date, &end_date],
+    ).await?;
+
+    let mut ideas = Vec::new();
+    for row in ideas_result {
+        let attachments_json = row["attachments"].as_str().unwrap_or("[]");
+        let attachments: Vec<String> = serde_json::from_str(attachments_json)
+            .unwrap_or_else(|_| Vec::new());
+
+        ideas.push(Idea {
+            id: row["id"].as_i64().unwrap_or(0),
+            content: row["content"].as_str().unwrap_or("").to_string(),
+            attachments,
+            created_at: row["created_at"].as_i64().unwrap_or(0),
+            date: row["date"].as_str().unwrap_or("").to_string(),
+        });
+    }
+
+    let tasks_result = execute_query(
+        &pool,
+        "SELECT * FROM done_tasks WHERE date >= ? AND date <= ? ORDER BY date DESC, start_time DESC",
+        &[&start_date, &end_date],
+    ).await?;
+
+    let mut tasks = Vec::new();
+    for row in tasks_result {
+        let attachments_json = row["attachments"].as_str().unwrap_or("[]");
+        let attachments: Vec<String> = serde_json::from_str(attachments_json)
+            .unwrap_or_else(|_| Vec::new());
+
+        tasks.push(DoneTask {
+            id: row["id"].as_i64().unwrap_or(0),
+            content: row["content"].as_str().unwrap_or("").to_string(),
+            start_time: row["start_time"].as_i64().unwrap_or(0),
+            end_time: row["end_time"].as_i64().unwrap_or(0),
+            attachments,
+            created_at: row["created_at"].as_i64().unwrap_or(0),
+            date: row["date"].as_str().unwrap_or("").to_string(),
+        });
+    }
+
+    Ok(TodayRecords { ideas, tasks })
+}
+
 // ========== 删除命令 ==========
 
 #[tauri::command]

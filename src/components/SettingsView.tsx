@@ -3,22 +3,26 @@ import { useAppStore } from '../store';
 import { Save, Loader2, ExternalLink } from 'lucide-react';
 
 export function SettingsView() {
-  const { apiConfig, saveApiConfig, loadApiConfig } = useAppStore();
-  const [config, setConfig] = useState({
+  const { apiConfig, saveApiConfig } = useAppStore();
+  
+  // 确保配置始终是受控的，使用默认值防止 undefined
+  const [config, setConfig] = useState(() => ({
     apiKey: '',
     apiUrl: 'https://api.openai.com/v1',
     model: 'gpt-4'
-  });
+  }));
+  
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  useEffect(() => {
-    loadApiConfig();
-  }, []);
-
+  // 同步 apiConfig 到本地状态
   useEffect(() => {
     if (apiConfig) {
-      setConfig(apiConfig);
+      setConfig({
+        apiKey: apiConfig.apiKey || '',
+        apiUrl: apiConfig.apiUrl || 'https://api.openai.com/v1',
+        model: apiConfig.model || 'gpt-4'
+      });
     }
   }, [apiConfig]);
 
@@ -62,7 +66,7 @@ export function SettingsView() {
           </label>
           <input
             type="text"
-            value={config.apiUrl}
+            value={config.apiUrl || ''}
             onChange={e => setConfig({ ...config, apiUrl: e.target.value })}
             placeholder="https://api.openai.com/v1"
             className="input-field"
@@ -78,7 +82,7 @@ export function SettingsView() {
           </label>
           <input
             type="password"
-            value={config.apiKey}
+            value={config.apiKey || ''}
             onChange={e => setConfig({ ...config, apiKey: e.target.value })}
             placeholder="sk-..."
             className="input-field"
@@ -94,7 +98,7 @@ export function SettingsView() {
           </label>
           <input
             type="text"
-            value={config.model}
+            value={config.model || ''}
             onChange={e => setConfig({ ...config, model: e.target.value })}
             placeholder="gpt-4"
             className="input-field"
@@ -136,6 +140,18 @@ export function SettingsView() {
           )}
         </div>
       </div>
+
+      {/* 配置状态 */}
+      {apiConfig && (
+        <div className="card p-4 bg-green-50 border border-green-200">
+          <h3 className="font-medium text-green-900 mb-2">✅ 当前配置状态</h3>
+          <div className="text-sm text-green-800 space-y-1">
+            <div><strong>API URL:</strong> {apiConfig.apiUrl}</div>
+            <div><strong>模型:</strong> {apiConfig.model}</div>
+            <div><strong>API Key:</strong> {apiConfig.apiKey ? '已配置' : '未配置'}</div>
+          </div>
+        </div>
+      )}
 
       {/* 使用说明 */}
       <div className="card p-4 bg-blue-50 border border-blue-200">
